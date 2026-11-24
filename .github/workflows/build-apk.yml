@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -46,6 +50,9 @@ jobs:
         run: |
           bunx cap add android
           bunx cap sync android
+
+      - name: Install native plugin
+        run: cp native/*.java android/app/src/main/java/com/muzean/app/
 
       - name: Build debug APK
         working-directory: android
