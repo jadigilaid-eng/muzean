@@ -1,0 +1,200 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --muzean-bg: #EFE9FA;
+    --muzean-bg-overlay: linear-gradient(180deg, rgba(246, 240, 255, 0.78) 0%, rgba(241, 234, 255, 0.65) 48%, rgba(224, 242, 255, 0.78) 100%);
+    --muzean-modal-bg: rgba(248, 245, 255, 0.84);
+    --muzean-surface: transparent;
+    --muzean-surface-elevated: rgba(255, 255, 255, 0.16);
+    --muzean-border: rgba(34, 18, 72, 0.24);
+    --muzean-text: #1B0F38;
+    --muzean-text-muted: #4C3F73;
+    --muzean-accent: #B814CC;
+    --muzean-accent-2: #007FA3;
+    --muzean-qa-bg: rgba(255, 255, 255, 0.82);
+    --muzean-qa-shadow: 0 10px 26px rgba(24, 12, 54, 0.34), 0 0 18px rgba(184, 20, 204, 0.28);
+    --font-neon-script: 'Yellowtail', cursive;
+    --font-outrun: 'Oxanium', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: var(--font-neon-script);
+    --font-mono: var(--font-outrun);
+  }
+
+  .dark {
+    --muzean-bg: #0D0521;
+    --muzean-bg-overlay: linear-gradient(180deg, rgba(12, 5, 30, 0.56) 0%, rgba(14, 6, 34, 0.48) 46%, rgba(7, 15, 44, 0.64) 100%);
+    --muzean-modal-bg: rgba(14, 7, 32, 0.84);
+    --muzean-surface: transparent;
+    --muzean-surface-elevated: rgba(255, 255, 255, 0.06);
+    --muzean-border: rgba(255, 255, 255, 0.26);
+    --muzean-text: #FFFFFF;
+    --muzean-text-muted: #DCD4F5;
+    --muzean-accent: #FF80FF;
+    --muzean-accent-2: #5CEFFF;
+    --muzean-qa-bg: rgba(12, 6, 30, 0.82);
+    --muzean-qa-shadow: 0 10px 28px rgba(0, 0, 0, 0.85), 0 0 22px rgba(255, 128, 255, 0.5);
+  }
+
+  html {
+    font-family: var(--font-outrun);
+    background-color: var(--muzean-bg);
+    color: var(--muzean-text);
+  }
+
+  body {
+    background-color: var(--muzean-bg);
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, .font-display, .font-neon-script, .font-serif-title {
+    font-family: var(--font-neon-script);
+    font-weight: 400;
+    letter-spacing: 0.025em;
+  }
+
+  .font-outrun {
+    font-family: var(--font-outrun);
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-outrun);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Fullscreen synthwave background image tuned cleanly per Light/Dark mode */
+.muzean-bg-image {
+  background-image: url('/assets/aistudio/fafecff47f05baa29c8301bfcd80293a_d297d7da.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: brightness(1.26) saturate(0.74) contrast(0.92);
+  transition: filter 320ms ease;
+}
+
+.dark .muzean-bg-image {
+  filter: brightness(0.84) saturate(1.18) contrast(1.06);
+}
+
+.muzean-bg-wash {
+  background: var(--muzean-bg-overlay);
+  transition: background 320ms ease;
+}
+
+/* Zero-shadow crystal transparent glass surfaces (rounded, backdrop image shines through) */
+.glass-panel {
+  background-color: transparent;
+  backdrop-filter: blur(12px) saturate(1.22);
+  -webkit-backdrop-filter: blur(12px) saturate(1.22);
+  border: 1px solid var(--muzean-border);
+  border-radius: 1.25rem;
+  box-shadow: none;
+}
+
+.glass-inset {
+  background-color: transparent;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--muzean-border);
+  border-radius: 1rem;
+  box-shadow: none;
+}
+
+.glass-btn {
+  background-color: transparent;
+  backdrop-filter: blur(10px) saturate(1.22);
+  -webkit-backdrop-filter: blur(10px) saturate(1.22);
+  border: 1px solid var(--muzean-border);
+  border-radius: 9999px;
+  box-shadow: none;
+}
+
+.glass-modal {
+  background-color: var(--muzean-modal-bg);
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  border: 1px solid var(--muzean-border);
+  border-radius: 1.5rem;
+  box-shadow: none;
+}
+
+.glass-titlebar {
+  background: transparent;
+  border-bottom: 1px solid var(--muzean-border);
+  color: var(--muzean-text);
+}
+
+/* Extra-transparent crystal glass scoped to the selected main TracksView component */
+.tracks-transparent-scope .glass-inset,
+.tracks-transparent-scope .glass-panel,
+.tracks-transparent-scope .glass-btn {
+  background-color: transparent;
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+  border-color: rgba(34, 18, 72, 0.14);
+}
+
+.dark .tracks-transparent-scope .glass-inset,
+.dark .tracks-transparent-scope .glass-panel,
+.dark .tracks-transparent-scope .glass-btn {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.tracks-transparent-scope .glass-inset[data-active="true"] {
+  border-color: var(--muzean-accent);
+}
+
+/* Quick Access active shadow & contrast surface when clicked so icons pop cleanly over artwork */
+.quick-access-shadow {
+  background-color: var(--muzean-qa-bg) !important;
+  box-shadow: var(--muzean-qa-shadow) !important;
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+}
+
+/* Optical zoom effect on slide/hover/drag */
+.glass-zoom {
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease;
+}
+
+.glass-zoom:hover,
+.glass-zoom:focus-visible {
+  transform: scale(1.025);
+  border-color: var(--muzean-accent);
+}
+
+.glass-zoom:active {
+  transform: scale(0.97);
+}
+
+/* Text scaling classes */
+html[data-text-scale="small"] {
+  font-size: 13px;
+}
+html[data-text-scale="medium"] {
+  font-size: 15px;
+}
+html[data-text-scale="large"] {
+  font-size: 17px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muzean-border);
+  border-radius: 9999px;
+}
