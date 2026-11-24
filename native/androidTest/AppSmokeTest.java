@@ -64,11 +64,16 @@ public class AppSmokeTest {
 
             String encoded = URLEncoder.encode(Uri.fromFile(file).toString(), "UTF-8").replace("+", "%20");
             String js =
-                "window.__r='';fetch('/_muzean_media/" + encoded + "',{headers:{Range:'bytes=10-14'}})" +
-                ".then(function(r){return r.arrayBuffer().then(function(b){window.__r=r.status+'|'+r.headers.get('Content-Range')+'|'+Array.from(new Uint8Array(b)).join(',');});})" +
-                ".catch(function(e){window.__r='ERR '+e;});'started'";
+                "window.__r=[];window.__done=false;(async function(){var u='/_muzean_media/" + encoded + "';" +
+                "var hs=[{},{Range:'bytes=10-14'}];for(var k=0;k<hs.length;k++){try{var r=await fetch(u,{headers:hs[k]});" +
+                "var b=new Uint8Array(await r.arrayBuffer());window.__r.push(r.status+'|'+r.headers.get('Content-Range')+'|'+b.length+'|'+Array.from(b.slice(0,5)).join(','));}" +
+                "catch(e){window.__r.push('ERR '+e);}}window.__done=true;})();'started'";
             eval(scenario, js);
-            waitFor(scenario, "String(window.__r)", "\"206|bytes 10-14/2000|10,11,12,13,14\"", 20);
+            waitFor(scenario, "String(window.__done)", "\"true\"", 20);
+            assertEquals(
+                "\"200|null|2000|0,1,2,3,4#206|bytes 10-14/2000|5|10,11,12,13,14\"",
+                eval(scenario, "window.__r.join('#')")
+            );
 
             // The app UI itself must have rendered (React root has children).
             waitFor(scenario, "String(document.getElementById('root') && document.getElementById('root').children.length > 0)", "\"true\"", 20);
