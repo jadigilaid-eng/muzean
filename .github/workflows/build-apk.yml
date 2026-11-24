@@ -117,9 +117,7 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
-            cd android
-            ./gradlew connectedDebugAndroidTest --no-daemon > ../emu.log 2>&1 || (echo EMU_TESTS_FAILED >> ../emu.log; adb logcat -d -t 300 >> ../emu.log)
-            cd ..
+            (cd android && ./gradlew connectedDebugAndroidTest --no-daemon > ../emu.log 2>&1) || (echo EMU_TESTS_FAILED >> emu.log; adb logcat -d -t 300 >> emu.log)
             adb install -r MUZEAN.apk
             adb shell monkey -p com.muzean.app -c android.intent.category.LAUNCHER 1
             sleep 10
