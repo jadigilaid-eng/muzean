@@ -45,6 +45,7 @@ interface SettingsViewProps {
     settingsFolderSection: string;
     settingsFolderHint: string;
     chooseFolder: string;
+    chooseFiles: string;
     rescanNow: string;
     scanning: string;
     settingsPlaybackSection: string;
@@ -89,6 +90,7 @@ export function SettingsView({
   labels,
 }: SettingsViewProps) {
   const dirInputRef = useRef<HTMLInputElement | null>(null);
+  const filesInputRef = useRef<HTMLInputElement | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const [restorePreview, setRestorePreview] = useState<{
     manifest: BackupManifest;
@@ -105,7 +107,10 @@ export function SettingsView({
   );
 
   const handleChooseFolderClick = () => {
-    if ('showDirectoryPicker' in window) {
+    // Android WebView (APK) cannot pick folders: use the multi-file audio picker instead.
+    if (/Android/i.test(navigator.userAgent)) {
+      filesInputRef.current?.click();
+    } else if ('showDirectoryPicker' in window) {
       onPickDirectoryHandle();
     } else {
       dirInputRef.current?.click();
@@ -141,6 +146,13 @@ export function SettingsView({
             </GlassButton>
             <GlassButton
               type="button"
+              onClick={() => filesInputRef.current?.click()}
+              className="min-h-[40px] px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap"
+            >
+              {labels.chooseFiles}
+            </GlassButton>
+            <GlassButton
+              type="button"
               tone="accent"
               disabled={isScanning}
               onClick={onManualRescan}
@@ -151,6 +163,21 @@ export function SettingsView({
             </GlassButton>
           </div>
         </div>
+
+        <input
+          ref={filesInputRef}
+          type="file"
+          multiple
+          accept="audio/*,.mp3,.flac,.m4a,.aac,.ogg,.opus,.wav,.lrc"
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+              onPickFolderFiles(files, 'Local Music');
+            }
+            e.target.value = '';
+          }}
+        />
 
         <input
           ref={dirInputRef}
