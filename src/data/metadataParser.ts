@@ -1,4 +1,5 @@
 import type { IncomingScanFile } from '../domain/duplicates';
+import { nativeMediaUrl, type NativeAudioEntry } from '../native/muzeanStorage';
 
 const SUPPORTED_EXTENSIONS = new Set(['mp3', 'flac', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'alac', 'webm']);
 
@@ -146,15 +147,18 @@ function probeAudioElement(objectUrl: string): Promise<{ durationMs: number; pla
 
 export async function parseLocalAudioFile(
   file: File,
-  relativePath: string
+  relativePath: string,
+  native?: NativeAudioEntry
 ): Promise<IncomingScanFile> {
   const parts = relativePath.split('/');
   const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : 'Root';
   const { container, codec, supported } = detectContainerAndCodec(file.name, file.type);
+  const fileSize = native ? native.size : file.size;
+  const docUri = native ? native.uri : `saf://${relativePath}`;
 
   if (!supported) {
     return {
-      documentUri: `saf://${relativePath}`,
+      documentUri: docUri,
       relativePath,
       folderPath,
       fileName: file.name,
@@ -164,7 +168,7 @@ export async function parseLocalAudioFile(
       bitrateBps: 0,
       sampleRateHz: 0,
       bitDepth: 0,
-      fileSizeBytes: file.size,
+      fileSizeBytes: fileSize,
       modifiedAt: file.lastModified,
       title: file.name.replace(/\.[^.]+$/, ''),
       artist: 'Unknown Artist',
@@ -180,15 +184,15 @@ export async function parseLocalAudioFile(
     };
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  const objectUrl = native ? nativeMediaUrl(native.uri) : URL.createObjectURL(file);
   try {
     const headSlice = await file.slice(0, 65536).arrayBuffer();
     const id3 = container === 'MP3' ? parseBasicId3v2(headSlice) : {};
     const probe = await probeAudioElement(objectUrl);
 
-    if (!probe.playable || file.size === 0) {
+    if (!probe.playable || fileSize === 0) {
       return {
-        documentUri: `saf://${relativePath}`,
+        documentUri: docUri,
         relativePath,
         folderPath,
         fileName: file.name,
@@ -198,7 +202,7 @@ export async function parseLocalAudioFile(
         bitrateBps: 0,
         sampleRateHz: 44100,
         bitDepth: 16,
-        fileSizeBytes: file.size,
+        fileSizeBytes: fileSize,
         modifiedAt: file.lastModified,
         title: id3.title || file.name.replace(/\.[^.]+$/, ''),
         artist: id3.artist || 'Unknown Artist',
@@ -215,14 +219,14 @@ export async function parseLocalAudioFile(
     }
 
     const durationSec = Math.max(1, probe.durationMs / 1000);
-    const estimatedBitrate = Math.round((file.size * 8) / durationSec);
+    const estimatedBitrate = Math.round((fileSize * 8) / durationSec);
     const baseName = file.name.replace(/\.[^.]+$/, '');
     const dashSplit = baseName.split(' - ');
     const fallbackArtist = dashSplit.length > 1 ? dashSplit[0].trim() : 'Unknown Artist';
     const fallbackTitle = dashSplit.length > 1 ? dashSplit.slice(1).join(' - ').trim() : baseName;
 
     return {
-      documentUri: `saf://${relativePath}`,
+      documentUri: docUri,
       relativePath,
       folderPath,
       fileName: file.name,
@@ -232,7 +236,7 @@ export async function parseLocalAudioFile(
       bitrateBps: estimatedBitrate,
       sampleRateHz: container === 'FLAC' || container === 'WAV' ? 48000 : 44100,
       bitDepth: container === 'FLAC' || container === 'WAV' ? 24 : 16,
-      fileSizeBytes: file.size,
+      fileSizeBytes: fileSize,
       modifiedAt: file.lastModified,
       title: id3.title || fallbackTitle,
       artist: id3.artist || fallbackArtist,
@@ -248,7 +252,7 @@ export async function parseLocalAudioFile(
     };
   } catch (err) {
     return {
-      documentUri: `saf://${relativePath}`,
+      documentUri: docUri,
       relativePath,
       folderPath,
       fileName: file.name,
@@ -258,7 +262,7 @@ export async function parseLocalAudioFile(
       bitrateBps: 0,
       sampleRateHz: 0,
       bitDepth: 0,
-      fileSizeBytes: file.size,
+      fileSizeBytes: fileSize,
       modifiedAt: file.lastModified,
       title: file.name.replace(/\.[^.]+$/, ''),
       artist: 'Unknown Artist',
