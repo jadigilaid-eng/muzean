@@ -393,6 +393,65 @@ export default function App() {
     }
   }, [currentTrack, db.artworkCache, handleTogglePlay, handleNext, handlePrevious]);
 
+  // Native Android: detect a revoked folder grant (reinstall, user revoked) so the UI can ask to re-pick.
+  const nativeTreeUri = db.musicRoot?.treeUri;
+  const nativeRootStatus = db.musicRoot?.rootStatus;
+  useEffect(() => {
+    if (!isNativeAndroid() || !nativeTreeUri || !nativeTreeUri.startsWith('content://')) return;
+    let cancelled = false;
+    MuzeanStorage.hasPermission({ treeUri: nativeTreeUri })
+      .then(({ granted }) => {
+        if (cancelled) return;
+        const next = granted ? 'READY' : 'PERMISSION_REVOKED';
+        if (next === nativeRootStatus) return;
+        setDb((prev) =>
+          prev.musicRoot ? { ...prev, musicRoot: { ...prev.musicRoot, rootStatus: next } } : prev,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeTreeUri, nativeRootStatus]);
+
+  // Native Android: foreground service + notification controls keep playback alive in the background.
+  const nativeActionsRef = useRef({ handleTogglePlay, handleNext, handlePrevious });
+  nativeActionsRef.current = { handleTogglePlay, handleNext, handlePrevious };
+
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    let handle: { remove: () => Promise<void> } | undefined;
+    let cancelled = false;
+    MuzeanStorage.addListener('mediaAction', ({ action }) => {
+      const a = nativeActionsRef.current;
+      if (action === 'toggle') void a.handleTogglePlay();
+      else if (action === 'next') a.handleNext();
+      else if (action === 'prev') a.handlePrevious();
+    })
+      .then((h) => {
+        if (cancelled) void h.remove();
+        else handle = h;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (handle) void handle.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    if (!currentTrack) {
+      void MuzeanStorage.stopPlayback().catch(() => undefined);
+      return;
+    }
+    void MuzeanStorage.updatePlayback({
+      title: currentTrack.displayTitle,
+      artist: currentTrack.displayArtist,
+      playing: isPlaying,
+    }).catch(() => undefined);
+  }, [currentTrack, isPlaying]);
+
   useEffect(() => {
     if (sleepRemainingSec === null) return;
     if (sleepRemainingSec <= 0) {
