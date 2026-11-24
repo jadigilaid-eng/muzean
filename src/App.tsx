@@ -65,6 +65,13 @@ import type {
   ViewRoute,
 } from './domain/types';
 import { getTranslations } from './i18n/translations';
+import {
+  MuzeanStorage,
+  isNativeAndroid,
+  nativeMediaUrl,
+  readNativeHead,
+  type NativeAudioEntry,
+} from './native/muzeanStorage';
 
 export default function App() {
   const initialLoad = useMemo(() => loadDatabaseState(), []);
@@ -263,7 +270,9 @@ export default function App() {
 
       await engine.loadAndPlay({
         trackKey: trk.trackId,
-        objectUrl: source.objectUrl,
+        objectUrl:
+          source.objectUrl ??
+          (source.documentUri.startsWith('content://') ? nativeMediaUrl(source.documentUri) : undefined),
         synthPresetIndex: trk.synthPresetIndex ?? 0,
         durationMs: trk.durationMs,
         autoplay,
@@ -471,15 +480,18 @@ export default function App() {
   };
 
   const handleScanFileEntries = async (
-    entries: Array<{ file: File; relativePath: string }>,
-    rootName: string
+    entries: Array<{ file?: File; relativePath: string; native?: NativeAudioEntry }>,
+    rootName: string,
+    treeUri?: string
   ) => {
     setIsScanning(true);
     const startedAt = Date.now();
     try {
       const incoming: IncomingScanFile[] = [];
       for (const entry of entries) {
-        const parsed = await parseLocalAudioFile(entry.file, entry.relativePath);
+        const srcFile = entry.file ?? (entry.native ? await readNativeHead(entry.native) : null);
+        if (!srcFile) continue;
+        const parsed = await parseLocalAudioFile(srcFile, entry.relativePath, entry.native);
         incoming.push(parsed);
       }
 
@@ -559,7 +571,7 @@ export default function App() {
           artworkCache: nextCache,
           musicRoot: {
             musicRootId: 'root_saf',
-            treeUri: `saf://${rootName}`,
+            treeUri: treeUri ?? `saf://${rootName}`,
             displayName: rootName,
             permissionPersisted: true,
             lastScanAt: now,
@@ -575,7 +587,34 @@ export default function App() {
     }
   };
 
+  const scanNativeTree = async (treeUri: string, rootName: string) => {
+    setIsScanning(true);
+    let res: { rootName: string; files: NativeAudioEntry[] };
+    try {
+      res = await MuzeanStorage.scan({ treeUri });
+    } catch {
+      setIsScanning(false);
+      showToast('Gagal memindai folder musik.');
+      return;
+    }
+    localFilesRef.current = [];
+    await handleScanFileEntries(
+      res.files.map((n) => ({ relativePath: n.relativePath, native: n })),
+      rootName,
+      treeUri
+    );
+  };
+
   const handlePickDirectoryHandle = async () => {
+    if (isNativeAndroid()) {
+      try {
+        const picked = await MuzeanStorage.pickFolder();
+        await scanNativeTree(picked.treeUri, picked.displayName);
+      } catch {
+        // cancelled by user
+      }
+      return;
+    }
     try {
       const picker = (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
       const handle = await picker();
@@ -612,6 +651,10 @@ export default function App() {
 
   const handleManualRescan = async () => {
     triggerHaptic();
+    if (db.musicRoot?.treeUri.startsWith('content://')) {
+      await scanNativeTree(db.musicRoot.treeUri, db.musicRoot.displayName);
+      return;
+    }
     if (localFilesRef.current.length > 0) {
       await handleScanFileEntries(
         localFilesRef.current,
