@@ -2,6 +2,14 @@
 # Generates launcher icons + splash from the original MUZEAN logo (public/assets/muzean-logo.png).
 # Usage: native/make-icons.sh <logo.png> <android/app/src/main/res>
 set -euo pipefail
+# ImageMagick 7 (ubuntu runners) ships only "magick"; ImageMagick 6 ships "convert"/"identify".
+if ! command -v convert >/dev/null 2>&1; then
+  command -v magick >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; }
+  if command -v magick >/dev/null 2>&1; then
+    convert() { magick "$@"; }
+    identify() { magick identify "$@"; }
+  fi
+fi
 LOGO="$1"; RES="$2"; BG="#008080"
 declare -A FG=( [mdpi]=108 [hdpi]=162 [xhdpi]=216 [xxhdpi]=324 [xxxhdpi]=432 )
 declare -A LG=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
