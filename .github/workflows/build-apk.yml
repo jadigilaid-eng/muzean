@@ -28,11 +28,16 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Typecheck and JS tests
+        run: |
+          bunx tsc --noEmit
+          bunx tsx --test src/domain/muzean.test.ts src/native/muzeanStorage.test.ts
+
       - name: Add Capacitor
         run: |
           bun add @capacitor/core @capacitor/android
           bun add -d @capacitor/cli
-          cat > capacitor.config.ts <<'EOF'
+          cat > capacitor.config.ts <<'EOF2'
           import type {CapacitorConfig} from '@capacitor/cli';
           const config: CapacitorConfig = {
             appId: 'com.muzean.app',
@@ -41,7 +46,7 @@ jobs:
             android: {backgroundColor: '#008080'},
           };
           export default config;
-          EOF
+          EOF2
 
       - name: Build web app
         run: bun run build
@@ -51,25 +56,91 @@ jobs:
           bunx cap add android
           bunx cap sync android
 
-      - name: Install native plugin
-        run: cp native/*.java android/app/src/main/java/com/muzean/app/
+      - name: Install native code, icons, manifest and tests
+        run: |
+          set -e
+          PKG=android/app/src/main/java/com/muzean/app
+          cp native/*.java $PKG/
+          rm -rf android/app/src/test/java/com/getcapacitor android/app/src/androidTest/java/com/getcapacitor
+          mkdir -p android/app/src/test/java/com/muzean/app android/app/src/androidTest/java/com/muzean/app
+          cp native/test/*.java android/app/src/test/java/com/muzean/app/
+          cp native/androidTest/*.java android/app/src/androidTest/java/com/muzean/app/
+          python3 native/patch-manifest.py android/app/src/main/AndroidManifest.xml
+          bash native/make-icons.sh public/assets/muzean-logo.png android/app/src/main/res
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -nE "versionCode|versionName|namespace|applicationId" android/app/build.gradle
 
-      - name: Build debug APK
+      - name: Java unit tests
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew testDebugUnitTest --no-daemon
 
-      - name: Rename APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk MUZEAN.apk
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Sign APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > release.jks
+            PASS="$KEYSTORE_PASS"; ALIAS=muzean
+            echo "SIGNING=stable" >> $GITHUB_ENV
+          else
+            PASS=$(openssl rand -hex 12); ALIAS=muzean
+            keytool -genkeypair -keystore release.jks -alias muzean -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=MUZEAN"
+            echo "SIGNING=ephemeral" >> $GITHUB_ENV
+          fi
+          IN=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          $BT/zipalign -p -f 4 $IN aligned.apk
+          $BT/apksigner sign --ks release.jks --ks-key-alias "$ALIAS" --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out MUZEAN.apk aligned.apk
+          $BT/apksigner verify --verbose MUZEAN.apk
+          rm -f release.jks aligned.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulator tests and smoke screenshot
+        id: emu
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            cd android && ./gradlew connectedDebugAndroidTest --no-daemon && cd ..
+            adb install -r MUZEAN.apk
+            adb shell monkey -p com.muzean.app -c android.intent.category.LAUNCHER 1
+            sleep 10
+            adb exec-out screencap -p > screenshot.png
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: MUZEAN-apk
-          path: MUZEAN.apk
+          path: |
+            MUZEAN.apk
+            screenshot.png
+            android/app/build/reports/**
+          if-no-files-found: ignore
 
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
           name: MUZEAN APK (latest)
-          files: MUZEAN.apk
+          body: |
+            Build #${{ github.run_number }} · signing: ${{ env.SIGNING }} · emulator tests: ${{ steps.emu.outcome }}
+          files: |
+            MUZEAN.apk
+            screenshot.png
           make_latest: true
