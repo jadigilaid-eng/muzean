@@ -24,6 +24,54 @@ import java.util.Set;
 @CapacitorPlugin(name = "MuzeanStorage")
 public class MuzeanStoragePlugin extends Plugin {
 
+    private static MuzeanStoragePlugin instance;
+
+    @Override
+    public void load() {
+        instance = this;
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (instance == this) instance = null;
+    }
+
+    /** Called by PlaybackReceiver when a notification button is pressed. */
+    static void dispatchMediaAction(String action) {
+        MuzeanStoragePlugin p = instance;
+        if (p == null) return;
+        JSObject o = new JSObject();
+        o.put("action", action);
+        p.notifyListeners("mediaAction", o);
+    }
+
+    @PluginMethod
+    public void updatePlayback(PluginCall call) {
+        Intent i = new Intent(getContext(), PlaybackService.class);
+        i.putExtra(PlaybackService.EXTRA_TITLE, call.getString("title", ""));
+        i.putExtra(PlaybackService.EXTRA_ARTIST, call.getString("artist", ""));
+        i.putExtra(PlaybackService.EXTRA_PLAYING, Boolean.TRUE.equals(call.getBoolean("playing", true)));
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(i);
+            else getContext().startService(i);
+            call.resolve();
+        } catch (Exception e) {
+            // e.g. background-start restrictions: playback itself keeps working, only the notification is lost
+            call.reject("updatePlayback failed: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void stopPlayback(PluginCall call) {
+        Intent i = new Intent(getContext(), PlaybackService.class).setAction(PlaybackService.ACTION_STOP);
+        try {
+            getContext().startService(i);
+        } catch (Exception ignored) {
+            // service not running
+        }
+        call.resolve();
+    }
+
     private static final Set<String> AUDIO_EXT = new HashSet<>(
         Arrays.asList("mp3", "flac", "m4a", "aac", "ogg", "oga", "opus", "wav", "wma", "alac", "aif", "aiff", "mka")
     );
