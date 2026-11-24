@@ -13,6 +13,12 @@ interface MuzeanStoragePlugin {
   pickFolder(): Promise<{ treeUri: string; displayName: string }>;
   scan(options: { treeUri: string }): Promise<{ rootName: string; files: NativeAudioEntry[] }>;
   hasPermission(options: { treeUri: string }): Promise<{ granted: boolean }>;
+  updatePlayback(options: { title: string; artist: string; playing: boolean }): Promise<void>;
+  stopPlayback(): Promise<void>;
+  addListener(
+    eventName: 'mediaAction',
+    listener: (event: { action: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 }
 
 export const MuzeanStorage = registerPlugin<MuzeanStoragePlugin>('MuzeanStorage');
@@ -22,8 +28,8 @@ export function isNativeAndroid(): boolean {
 }
 
 /** URL the WebView can stream (with Range support) for a SAF content:// document. */
-export function nativeMediaUrl(contentUri: string): string {
-  return `${window.location.origin}/_muzean_media/${encodeURIComponent(contentUri)}`;
+export function nativeMediaUrl(contentUri: string, origin: string = window.location.origin): string {
+  return `${origin}/_muzean_media/${encodeURIComponent(contentUri)}`;
 }
 
 /** Reads only the first 64 KB of a native file so ID3 tags can be parsed without loading the whole track. */
