@@ -9,6 +9,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { isNativeAndroid } from '../native/muzeanStorage';
 import type { BackupManifest, BackupPayload } from '../domain/backup';
 import { resolveTransitionMode } from '../domain/audioMath';
 import type {
@@ -107,8 +108,10 @@ export function SettingsView({
   );
 
   const handleChooseFolderClick = () => {
-    // Android WebView (APK) cannot pick folders: use the multi-file audio picker instead.
-    if (/Android/i.test(navigator.userAgent)) {
+    if (isNativeAndroid()) {
+      onPickDirectoryHandle(); // native SAF folder picker (APK)
+    } else if (/Android/i.test(navigator.userAgent)) {
+      // Android browsers cannot pick folders: use the multi-file audio picker instead.
       filesInputRef.current?.click();
     } else if ('showDirectoryPicker' in window) {
       onPickDirectoryHandle();
