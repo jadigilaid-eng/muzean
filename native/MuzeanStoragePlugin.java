@@ -51,6 +51,12 @@ public class MuzeanStoragePlugin extends Plugin {
         i.putExtra(PlaybackService.EXTRA_TITLE, call.getString("title", ""));
         i.putExtra(PlaybackService.EXTRA_ARTIST, call.getString("artist", ""));
         i.putExtra(PlaybackService.EXTRA_PLAYING, Boolean.TRUE.equals(call.getBoolean("playing", true)));
+        MuzeanWidgetProvider.refresh(
+            getContext(),
+            call.getString("title", ""),
+            call.getString("artist", ""),
+            Boolean.TRUE.equals(call.getBoolean("playing", true))
+        );
         try {
             if (android.os.Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(i);
             else getContext().startService(i);
@@ -59,6 +65,28 @@ public class MuzeanStoragePlugin extends Plugin {
             // e.g. background-start restrictions: playback itself keeps working, only the notification is lost
             call.reject("updatePlayback failed: " + e.getMessage());
         }
+    }
+
+    /** Asks the launcher to pin the widget to the home screen (Android 8+); otherwise the user adds it manually. */
+    @PluginMethod
+    public void pinWidget(PluginCall call) {
+        JSObject ret = new JSObject();
+        boolean requested = false;
+        boolean supported = false;
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            android.appwidget.AppWidgetManager mgr = android.appwidget.AppWidgetManager.getInstance(getContext());
+            supported = mgr.isRequestPinAppWidgetSupported();
+            if (supported) {
+                requested = mgr.requestPinAppWidget(
+                    new android.content.ComponentName(getContext(), MuzeanWidgetProvider.class),
+                    null,
+                    null
+                );
+            }
+        }
+        ret.put("supported", supported);
+        ret.put("requested", requested);
+        call.resolve(ret);
     }
 
     @PluginMethod

@@ -18,7 +18,9 @@ import { EqualizerView } from './components/EqualizerView';
 import { APPLE_SPRING, GlassButton, GlassPanel } from './components/GlassUI';
 import { LyricsSheet } from './components/LyricsSheet';
 import { NowPlayingView } from './components/NowPlayingView';
+import { IntroSplash } from './components/IntroSplash';
 import { PlaylistsView } from './components/PlaylistsView';
+import { addTracksToPlaylist, buildUserPlaylist } from './domain/playlists';
 import { QueueSheet } from './components/QueueSheet';
 import { QuickAccessMenu } from './components/QuickAccessMenu';
 import { SettingsView } from './components/SettingsView';
@@ -392,6 +394,18 @@ export default function App() {
       // Ignore unsupported mediaSession actions
     }
   }, [currentTrack, db.artworkCache, handleTogglePlay, handleNext, handlePrevious]);
+
+  const handleAddTracksToPlaylist = useCallback(
+    (trackIds: string[], playlistId: string) => {
+      triggerHaptic();
+      setDb((prev) => {
+        const res = addTracksToPlaylist(prev.playlistTracks, playlistId, trackIds, Date.now());
+        return res.added === 0 ? prev : { ...prev, playlistTracks: res.items };
+      });
+      showToast(trackIds.length > 1 ? `${trackIds.length} lagu ditambahkan` : 'Ditambahkan ke daftar putar');
+    },
+    [triggerHaptic, showToast],
+  );
 
   // Native Android: detect a revoked folder grant (reinstall, user revoked) so the UI can ask to re-pick.
   const nativeTreeUri = db.musicRoot?.treeUri;
@@ -779,6 +793,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
+      <IntroSplash />
       <div
         className="relative z-0 h-screen w-full flex overflow-hidden bg-transparent text-[var(--muzean-text)]"
         onTouchStart={(e) => {
@@ -973,25 +988,17 @@ export default function App() {
                         setDb((prev) => ({ ...prev, queue: [...prev.queue, newItem] }));
                         showToast('Added to Queue');
                       }}
-                      onAddToPlaylist={(trackId, playlistId) => {
+                      onAddTracksToPlaylist={(trackIds, playlistId) => handleAddTracksToPlaylist(trackIds, playlistId)}
+                      onCreatePlaylistWithTracks={(name, trackIds) => {
+                        const pl = buildUserPlaylist(name, Date.now());
+                        if (!pl) return;
                         triggerHaptic();
-                        setDb((prev) => {
-                          const already = prev.playlistTracks.some(
-                            (pt) => pt.playlistId === playlistId && pt.trackId === trackId
-                          );
-                          if (already) return prev;
-                          const count = prev.playlistTracks.filter(
-                            (pt) => pt.playlistId === playlistId
-                          ).length;
-                          return {
-                            ...prev,
-                            playlistTracks: [
-                              ...prev.playlistTracks,
-                              { playlistId, trackId, position: count, addedAt: Date.now() },
-                            ],
-                          };
-                        });
-                        showToast('Added to Playlist');
+                        setDb((prev) => ({
+                          ...prev,
+                          playlists: [...prev.playlists, pl],
+                          playlistTracks: addTracksToPlaylist(prev.playlistTracks, pl.playlistId, trackIds, Date.now()).items,
+                        }));
+                        showToast(`${trackIds.length} lagu ditambahkan ke "${pl.name}"`);
                       }}
                       onOpenSongInfo={(trackId) => setSongInfoTrackId(trackId)}
                       onResolveDuplicateCandidate={(candidateId, action) => {
@@ -1041,25 +1048,13 @@ export default function App() {
                       trackPlayCounts={db.trackPlayCounts}
                       artworkCache={db.artworkCache}
                       onCreatePlaylist={(name) => {
+                        const pl = buildUserPlaylist(name, Date.now());
+                        if (!pl) return;
                         triggerHaptic();
-                        const now = Date.now();
-                        setDb((prev) => ({
-                          ...prev,
-                          playlists: [
-                            ...prev.playlists,
-                            {
-                              playlistId: `pl_${now}`,
-                              name,
-                              playlistType: 'USER',
-                              smartType: null,
-                              sortMode: 'dateAdded',
-                              artworkCacheKey: '',
-                              createdAt: now,
-                              updatedAt: now,
-                            },
-                          ],
-                        }));
+                        setDb((prev) => ({ ...prev, playlists: [...prev.playlists, pl] }));
+                        showToast(`Daftar putar "${pl.name}" dibuat`);
                       }}
+                      onAddTracksToPlaylist={(trackIds, playlistId) => handleAddTracksToPlaylist(trackIds, playlistId)}
                       onRenamePlaylist={(playlistId, newName) => {
                         setDb((prev) => ({
                           ...prev,

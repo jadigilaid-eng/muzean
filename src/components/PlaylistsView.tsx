@@ -8,7 +8,10 @@ import {
   GripVertical,
   Play,
   Plus,
+  Square,
+  CheckSquare,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { resolvePlaylistCoverArts } from '../domain/artwork';
@@ -31,6 +34,7 @@ interface PlaylistsViewProps {
   trackPlayCounts: TrackPlayCount[];
   artworkCache: Record<string, ArtworkCacheEntry>;
   onCreatePlaylist: (name: string) => void;
+  onAddTracksToPlaylist: (trackIds: string[], playlistId: string) => void;
   onRenamePlaylist: (playlistId: string, newName: string) => void;
   onDeletePlaylist: (playlistId: string) => void;
   onRemoveTrackFromPlaylist: (playlistId: string, trackId: string) => void;
@@ -51,6 +55,11 @@ interface PlaylistsViewProps {
     save: string;
     tracksCount: string;
     playNow: string;
+    addSongs: string;
+    searchSongs: string;
+    addSelected: string;
+    alreadyInPlaylist: string;
+    selectedCount: string;
   };
 }
 
@@ -62,6 +71,7 @@ export function PlaylistsView({
   trackPlayCounts,
   artworkCache,
   onCreatePlaylist,
+  onAddTracksToPlaylist,
   onRenamePlaylist,
   onDeletePlaylist,
   onRemoveTrackFromPlaylist,
@@ -77,6 +87,9 @@ export function PlaylistsView({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [addSongsOpen, setAddSongsOpen] = useState(false);
+  const [addQuery, setAddQuery] = useState('');
+  const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
 
   const tracksById = useMemo(() => new Map(tracks.map((t) => [t.trackId, t])), [tracks]);
 
@@ -167,6 +180,20 @@ export function PlaylistsView({
               {entries.length} {labels.tracksCount} · {formatDurationMs(totalDuration)}
             </div>
           </div>
+          {isUserPlaylist && (
+            <GlassButton
+              type="button"
+              onClick={() => {
+                setAddQuery('');
+                setAddSelected(new Set());
+                setAddSongsOpen(true);
+              }}
+              className="min-h-[42px] px-4 py-2 text-xs font-semibold inline-flex items-center gap-2 self-start"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{labels.addSongs}</span>
+            </GlassButton>
+          )}
           {playableIds.length > 0 && (
             <GlassButton
               type="button"
@@ -275,6 +302,100 @@ export function PlaylistsView({
             ))}
           </GlassPanel>
         )}
+
+        {addSongsOpen && isUserPlaylist && (() => {
+          const inList = new Set(entries.map((e) => e.track.trackId));
+          const q = addQuery.trim().toLowerCase();
+          const candidates = tracks
+            .filter((t) => t.availabilityStatus === 'AVAILABLE')
+            .filter(
+              (t) =>
+                !q ||
+                t.displayTitle.toLowerCase().includes(q) ||
+                t.displayArtist.toLowerCase().includes(q) ||
+                t.displayAlbum.toLowerCase().includes(q)
+            );
+          return (
+            <div role="dialog" aria-modal="true" aria-label={labels.addSongs} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="glass-modal w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]">
+                <div className="glass-titlebar px-4 py-3 flex items-center justify-between text-sm font-semibold">
+                  <span className="font-neon-script text-xl leading-none pr-2">{labels.addSongs}</span>
+                  <GlassButton type="button" shape="circle" onClick={() => setAddSongsOpen(false)} aria-label="Close" className="min-h-[34px] min-w-[34px] flex items-center justify-center">
+                    <X className="w-4 h-4" />
+                  </GlassButton>
+                </div>
+                <div className="p-3">
+                  <input
+                    type="text"
+                    value={addQuery}
+                    onChange={(e) => setAddQuery(e.target.value)}
+                    placeholder={labels.searchSongs}
+                    aria-label={labels.searchSongs}
+                    className="w-full min-h-[40px] px-3 py-2 glass-btn text-xs text-[var(--muzean-text)] placeholder:text-[var(--muzean-text-muted)]"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 space-y-1">
+                  {candidates.map((t) => {
+                    const already = inList.has(t.trackId);
+                    const checked = addSelected.has(t.trackId);
+                    return (
+                      <button
+                        key={t.trackId}
+                        type="button"
+                        disabled={already}
+                        aria-pressed={checked}
+                        onClick={() =>
+                          setAddSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(t.trackId)) next.delete(t.trackId);
+                            else next.add(t.trackId);
+                            return next;
+                          })
+                        }
+                        className="w-full min-h-[44px] flex items-center gap-2.5 text-left glass-inset px-3 py-1.5 disabled:opacity-50"
+                      >
+                        {checked ? (
+                          <CheckSquare className="w-5 h-5 shrink-0 text-[var(--muzean-accent)]" aria-hidden="true" />
+                        ) : (
+                          <Square className="w-5 h-5 shrink-0 text-[var(--muzean-text-muted)]" aria-hidden="true" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-outrun text-sm font-semibold truncate">{t.displayTitle}</div>
+                          <div className="text-[11px] text-[var(--muzean-text-muted)] truncate font-mono-tabular">
+                            {t.displayArtist}
+                            {already ? ` · ${labels.alreadyInPlaylist}` : ''}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="p-3 flex items-center justify-between gap-2 border-t border-[var(--muzean-border)]">
+                  <span className="font-mono-tabular text-xs">
+                    {addSelected.size} {labels.selectedCount}
+                  </span>
+                  <GlassButton
+                    type="button"
+                    tone="accent"
+                    disabled={addSelected.size === 0}
+                    onClick={() => {
+                      onAddTracksToPlaylist(
+                        candidates.filter((t) => addSelected.has(t.trackId)).map((t) => t.trackId).concat(
+                          [...addSelected].filter((id) => !candidates.some((t) => t.trackId === id))
+                        ),
+                        selectedPlaylist.playlistId
+                      );
+                      setAddSongsOpen(false);
+                    }}
+                    className="min-h-[40px] px-4 text-xs font-semibold"
+                  >
+                    {labels.addSelected}
+                  </GlassButton>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {clearHistoryConfirm && (
           <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">

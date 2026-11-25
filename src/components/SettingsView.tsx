@@ -9,7 +9,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { isNativeAndroid } from '../native/muzeanStorage';
+import { MuzeanStorage, isNativeAndroid } from '../native/muzeanStorage';
 import type { BackupManifest, BackupPayload } from '../domain/backup';
 import { resolveTransitionMode } from '../domain/audioMath';
 import type {
@@ -47,6 +47,9 @@ interface SettingsViewProps {
     settingsFolderHint: string;
     chooseFolder: string;
     chooseFiles: string;
+    addWidget: string;
+    widgetHint: string;
+    widgetRequested: string;
     rescanNow: string;
     scanning: string;
     settingsPlaybackSection: string;
@@ -107,6 +110,8 @@ export function SettingsView({
     settings.gaplessEnabled
   );
 
+  const [widgetNote, setWidgetNote] = useState<string | null>(null);
+
   const handleChooseFolderClick = () => {
     if (isNativeAndroid()) {
       onPickDirectoryHandle(); // native SAF folder picker (APK)
@@ -154,6 +159,20 @@ export function SettingsView({
             >
               {labels.chooseFiles}
             </GlassButton>
+            {isNativeAndroid() && (
+              <GlassButton
+                type="button"
+                onClick={() => {
+                  setWidgetNote(null);
+                  MuzeanStorage.pinWidget()
+                    .then((r) => setWidgetNote(r.requested ? labels.widgetRequested : labels.widgetHint))
+                    .catch(() => setWidgetNote(labels.widgetHint));
+                }}
+                className="min-h-[40px] px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap"
+              >
+                {labels.addWidget}
+              </GlassButton>
+            )}
             <GlassButton
               type="button"
               tone="accent"
@@ -166,6 +185,12 @@ export function SettingsView({
             </GlassButton>
           </div>
         </div>
+
+        {widgetNote && (
+          <p role="status" className="text-xs text-[var(--muzean-text-muted)]">
+            {widgetNote}
+          </p>
+        )}
 
         <input
           ref={filesInputRef}

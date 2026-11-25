@@ -2,6 +2,8 @@ import { motion } from 'motion/react';
 import {
   AlertTriangle,
   ArrowDownUp,
+  CheckSquare,
+  Square,
   Info,
   ListPlus,
   Play,
@@ -38,7 +40,8 @@ interface TracksViewProps {
   onSortChange: (field: SortField, dir: SortDirection) => void;
   onPlayTrack: (trackId: string, orderedTrackIds: string[]) => void;
   onAddToQueue: (trackId: string) => void;
-  onAddToPlaylist: (trackId: string, playlistId: string) => void;
+  onAddTracksToPlaylist: (trackIds: string[], playlistId: string) => void;
+  onCreatePlaylistWithTracks: (name: string, trackIds: string[]) => void;
   onOpenSongInfo: (trackId: string) => void;
   onResolveDuplicateCandidate: (candidateId: string, action: 'MERGE' | 'DISMISS') => void;
   labels: {
@@ -49,6 +52,14 @@ interface TracksViewProps {
     sortDuration: string;
     sortDateAdded: string;
     addToPlaylist: string;
+    selectMode: string;
+    selectDone: string;
+    selectAll: string;
+    selectedCount: string;
+    addSelectedToPlaylist: string;
+    newPlaylistNameLabel: string;
+    createAndAdd: string;
+    noPlaylistsYet: string;
     addToQueue: string;
     songInfo: string;
     emptyTracks: string;
@@ -74,13 +85,17 @@ export function TracksView({
   onSortChange,
   onPlayTrack,
   onAddToQueue,
-  onAddToPlaylist,
+  onAddTracksToPlaylist,
+  onCreatePlaylistWithTracks,
   onOpenSongInfo,
   onResolveDuplicateCandidate,
   labels,
 }: TracksViewProps) {
   const [swipedTrackId, setSwipedTrackId] = useState<string | null>(null);
-  const [playlistPickerTrackId, setPlaylistPickerTrackId] = useState<string | null>(null);
+  const [pickerTrackIds, setPickerTrackIds] = useState<string[] | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [newPlaylistName, setNewPlaylistName] = useState('');
   const [showDupPanel, setShowDupPanel] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
 
@@ -160,6 +175,19 @@ export function TracksView({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <GlassButton
+            type="button"
+            active={selectMode}
+            onClick={() => {
+              setSelectMode((v) => !v);
+              setSelectedIds(new Set());
+            }}
+            aria-pressed={selectMode}
+            className="min-h-[36px] px-3 py-1 text-xs inline-flex items-center gap-1.5"
+          >
+            <CheckSquare className="w-3.5 h-3.5" />
+            <span>{selectMode ? labels.selectDone : labels.selectMode}</span>
+          </GlassButton>
           <label htmlFor="track-sort-select" className="text-xs text-[var(--muzean-text-muted)] whitespace-nowrap hidden sm:inline">
             {labels.sortBy}:
           </label>
@@ -186,6 +214,36 @@ export function TracksView({
           </GlassButton>
         </div>
       </div>
+
+      {selectMode && (
+        <GlassPanel className="px-3 py-2 flex flex-wrap items-center justify-between gap-2" data-testid="select-bar">
+          <span className="font-mono-tabular text-xs">
+            {selectedIds.size} {labels.selectedCount}
+          </span>
+          <div className="flex items-center gap-2">
+            <GlassButton
+              type="button"
+              onClick={() =>
+                setSelectedIds(
+                  selectedIds.size === orderedAvailableIds.length ? new Set() : new Set(orderedAvailableIds)
+                )
+              }
+              className="min-h-[34px] px-3 py-1 text-xs"
+            >
+              {labels.selectAll}
+            </GlassButton>
+            <GlassButton
+              type="button"
+              tone="accent"
+              disabled={selectedIds.size === 0}
+              onClick={() => setPickerTrackIds(orderedAvailableIds.filter((id) => selectedIds.has(id)))}
+              className="min-h-[34px] px-3 py-1 text-xs font-semibold"
+            >
+              {labels.addSelectedToPlaylist}
+            </GlassButton>
+          </div>
+        </GlassPanel>
+      )}
 
       {/* Pending Duplicate Candidates Confirmation Banner */}
       {pendingDuplicates.length > 0 && (
@@ -287,9 +345,27 @@ export function TracksView({
                 <button
                   type="button"
                   disabled={isCorrupt}
-                  onClick={() => onPlayTrack(track.trackId, orderedAvailableIds)}
+                  onClick={() => {
+                    if (selectMode) {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(track.trackId)) next.delete(track.trackId);
+                        else next.add(track.trackId);
+                        return next;
+                      });
+                    } else {
+                      onPlayTrack(track.trackId, orderedAvailableIds);
+                    }
+                  }}
+                  aria-pressed={selectMode ? selectedIds.has(track.trackId) : undefined}
                   className="flex items-center gap-2.5 min-w-0 flex-1 text-left min-h-[40px] disabled:opacity-55"
                 >
+                  {selectMode &&
+                    (selectedIds.has(track.trackId) ? (
+                      <CheckSquare className="w-5 h-5 shrink-0 text-[var(--muzean-accent)]" aria-hidden="true" />
+                    ) : (
+                      <Square className="w-5 h-5 shrink-0 text-[var(--muzean-text-muted)]" aria-hidden="true" />
+                    ))}
                   <div className="relative w-9 h-9 rounded-xl shrink-0 border border-[var(--muzean-border)] overflow-hidden">
                     <img
                       src={artUri}
@@ -342,7 +418,7 @@ export function TracksView({
                     shape="circle"
                     disabled={isCorrupt}
                     active={isSwiped}
-                    onClick={() => setPlaylistPickerTrackId(track.trackId)}
+                    onClick={() => setPickerTrackIds([track.trackId])}
                     aria-label={`${labels.addToPlaylist}: ${track.displayTitle}`}
                     title={labels.addToPlaylist}
                     className="min-h-[36px] min-w-[36px] flex items-center justify-center"
@@ -380,8 +456,8 @@ export function TracksView({
         </div>
       )}
 
-      {/* Add to Playlist Modal */}
-      {playlistPickerTrackId && (
+      {/* Add to Playlist Modal (single track or the multi-selection) */}
+      {pickerTrackIds && (
         <div
           role="dialog"
           aria-modal="true"
@@ -390,11 +466,14 @@ export function TracksView({
         >
           <div className="glass-modal w-full max-w-sm overflow-hidden">
             <div className="glass-titlebar px-4 py-3 flex items-center justify-between text-sm font-semibold">
-              <span className="font-neon-script text-xl leading-none pr-2">{labels.addToPlaylist}</span>
+              <span className="font-neon-script text-xl leading-none pr-2">
+                {labels.addToPlaylist}
+                {pickerTrackIds.length > 1 ? ` (${pickerTrackIds.length})` : ''}
+              </span>
               <GlassButton
                 type="button"
                 shape="circle"
-                onClick={() => setPlaylistPickerTrackId(null)}
+                onClick={() => setPickerTrackIds(null)}
                 aria-label="Close"
                 className="min-h-[34px] min-w-[34px] flex items-center justify-center"
               >
@@ -403,9 +482,7 @@ export function TracksView({
             </div>
             <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
               {userPlaylists.length === 0 ? (
-                <p className="text-xs text-[var(--muzean-text-muted)] py-4 text-center">
-                  No custom playlists yet.
-                </p>
+                <p className="text-xs text-[var(--muzean-text-muted)] py-2 text-center">{labels.noPlaylistsYet}</p>
               ) : (
                 userPlaylists.map((pl) => (
                   <GlassButton
@@ -413,8 +490,10 @@ export function TracksView({
                     type="button"
                     shape="rounded"
                     onClick={() => {
-                      onAddToPlaylist(playlistPickerTrackId, pl.playlistId);
-                      setPlaylistPickerTrackId(null);
+                      onAddTracksToPlaylist(pickerTrackIds, pl.playlistId);
+                      setPickerTrackIds(null);
+                      setSelectMode(false);
+                      setSelectedIds(new Set());
                     }}
                     className="w-full min-h-[42px] px-3 py-2 text-left text-xs font-medium"
                   >
@@ -423,6 +502,40 @@ export function TracksView({
                 ))
               )}
             </div>
+            <form
+              className="p-4 pt-0 space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = newPlaylistName.trim();
+                if (!name) return;
+                onCreatePlaylistWithTracks(name, pickerTrackIds);
+                setNewPlaylistName('');
+                setPickerTrackIds(null);
+                setSelectMode(false);
+                setSelectedIds(new Set());
+              }}
+            >
+              <label htmlFor="new-playlist-inline" className="text-[11px] text-[var(--muzean-text-muted)]">
+                {labels.newPlaylistNameLabel}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="new-playlist-inline"
+                  type="text"
+                  value={newPlaylistName}
+                  onChange={(e) => setNewPlaylistName(e.target.value)}
+                  className="flex-1 min-w-0 min-h-[40px] px-3 py-2 glass-btn text-xs text-[var(--muzean-text)]"
+                />
+                <GlassButton
+                  type="submit"
+                  tone="accent"
+                  disabled={!newPlaylistName.trim()}
+                  className="min-h-[40px] px-3 text-xs font-semibold whitespace-nowrap"
+                >
+                  {labels.createAndAdd}
+                </GlassButton>
+              </div>
+            </form>
           </div>
         </div>
       )}

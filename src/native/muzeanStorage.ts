@@ -15,6 +15,7 @@ interface MuzeanStoragePlugin {
   hasPermission(options: { treeUri: string }): Promise<{ granted: boolean }>;
   updatePlayback(options: { title: string; artist: string; playing: boolean }): Promise<void>;
   stopPlayback(): Promise<void>;
+  pinWidget(): Promise<{ supported: boolean; requested: boolean }>;
   addListener(
     eventName: 'mediaAction',
     listener: (event: { action: string }) => void,

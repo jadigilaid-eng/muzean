@@ -19,4 +19,14 @@ if "PlaybackService" not in s:
     s = s.replace("</application>", comps + "    </application>", 1)
     i = s.index("<application")
     s = s[:i] + perms.lstrip() + "    " + s[i:]
+if "MuzeanWidgetProvider" not in s:
+    widget = (
+        '        <receiver android:name=".MuzeanWidgetProvider" android:exported="false">\n'
+        '            <intent-filter>\n'
+        '                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />\n'
+        '            </intent-filter>\n'
+        '            <meta-data android:name="android.appwidget.provider" android:resource="@xml/muzean_widget_info" />\n'
+        '        </receiver>\n'
+    )
+    s = s.replace("</application>", widget + "    </application>", 1)
 open(path, "w", encoding="utf-8").write(s)

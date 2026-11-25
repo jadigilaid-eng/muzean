@@ -2,6 +2,22 @@ import type { MuzeanDatabaseState } from '../domain/types';
 import { createSeedDatabaseState } from './seedLibrary';
 
 const DB_STORAGE_KEY = 'muzean_local_db_v2';
+const USER_DATA_KEY = 'muzean_user_data_v1';
+
+export type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem'>;
+
+function defaultStorage(): KeyValueStorage {
+  return window.localStorage;
+}
+
+function trySet(storage: KeyValueStorage, key: string, value: string): boolean {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface LoadDbResult {
   state: MuzeanDatabaseState;
@@ -23,12 +39,12 @@ function sanitizeForPersistence(state: MuzeanDatabaseState): MuzeanDatabaseState
   };
 }
 
-export function loadDatabaseState(): LoadDbResult {
+export function loadDatabaseState(storage: KeyValueStorage = defaultStorage()): LoadDbResult {
   try {
-    const raw = window.localStorage.getItem(DB_STORAGE_KEY);
+    const raw = storage.getItem(DB_STORAGE_KEY);
     if (!raw) {
       const seeded = createSeedDatabaseState();
-      saveDatabaseState(seeded);
+      saveDatabaseState(seeded, storage);
       return {
         state: seeded,
         recoveryTriggered: false,
@@ -63,6 +79,19 @@ export function loadDatabaseState(): LoadDbResult {
       artworkCache: parsed.artworkCache ?? fallback.artworkCache,
     };
 
+    // The small user-data record is written first on every save, so it is at least as new as the full snapshot.
+    try {
+      const rawUser = storage.getItem(USER_DATA_KEY);
+      const user = rawUser ? (JSON.parse(rawUser) as Partial<MuzeanDatabaseState>) : null;
+      if (user && Array.isArray(user.playlists) && Array.isArray(user.playlistTracks)) {
+        repaired.playlists = user.playlists;
+        repaired.playlistTracks = user.playlistTracks;
+        if (user.settings) repaired.settings = { ...repaired.settings, ...user.settings };
+      }
+    } catch {
+      // ignore a damaged user-data record; the main snapshot is still used
+    }
+
     return {
       state: repaired,
       recoveryTriggered: false,
@@ -79,17 +108,26 @@ export function loadDatabaseState(): LoadDbResult {
   }
 }
 
-export function saveDatabaseState(state: MuzeanDatabaseState): void {
+export function saveDatabaseState(state: MuzeanDatabaseState, storage: KeyValueStorage = defaultStorage()): void {
   try {
+    // Small, essential data first: playlists and settings must survive even when the full snapshot is too big
+    // for localStorage (large scanned libraries with generated artwork).
+    trySet(
+      storage,
+      USER_DATA_KEY,
+      JSON.stringify({ playlists: state.playlists, playlistTracks: state.playlistTracks, settings: state.settings }),
+    );
     const clean = sanitizeForPersistence(state);
-    window.localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(clean));
+    if (trySet(storage, DB_STORAGE_KEY, JSON.stringify(clean))) return;
+    // Artwork cache is regenerable; drop it and retry.
+    trySet(storage, DB_STORAGE_KEY, JSON.stringify({ ...clean, artworkCache: {} }));
   } catch {
-    // Handle storage quota gracefully without crashing playback
+    // Never crash playback because persistence failed
   }
 }
 
-export function resetDatabaseState(): MuzeanDatabaseState {
+export function resetDatabaseState(storage: KeyValueStorage = defaultStorage()): MuzeanDatabaseState {
   const fresh = createSeedDatabaseState();
-  saveDatabaseState(fresh);
+  saveDatabaseState(fresh, storage);
   return fresh;
 }
